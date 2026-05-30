@@ -13,7 +13,7 @@ const CONFIG = {
   host: process.env.MC_HOST || 'Bhikmanges.aternos.me',
   port: parseInt(process.env.MC_PORT) || 25615,
   username: process.env.MC_USERNAME || 'Bhikmangya',
-  version: process.env.MC_VERSION || '1.20.1',
+  version: process.env.MC_VERSION || undefined,
   webPort: parseInt(process.env.WEB_PORT) || 3000,
   reconnectDelay: 5000,
   afkInterval: 3000,
