@@ -1,1 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MC AFK Bot — Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap');
 
+  :root {
+    --bg: #0d0f0e;
+    --surface: #131614;
+    --surface2: #1a1d1b;
+    --border: #252a27;
+    --green: #4ade80;
+    --green-dim: #1a3325;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --blue: #60a5fa;
+    --muted: #4b5563;
+    --text: #d1fae5;
+    --text-dim: #6b7280;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--green);
+  }
+  .logo span { color: var(--text-dim); font-weight: 700; }
+
+  #status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    transition: all 0.3s;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .status-connected .dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  .status-connecting .dot, .status-reconnecting .dot { background: var(--yellow); animation: pulse 1s infinite; }
+  .status-disconnected .dot { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 57px);
+  }
+
+  .sidebar {
+    grid-row: 1 / 3;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .card-title {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-dim); }
+  .stat-value { color: var(--text); font-weight: 600; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.red { color: var(--red); }
+  .stat-value.yellow { color: var(--yellow); }
+
+  .coords-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .coord { display: flex; gap: 8px; }
+  .coord-axis { color: var(--text-dim); width: 14px; }
+  .coord-val { color: var(--green); font-weight: 600; }
+
+  .bar-wrap { height: 6px; background: var(--bg); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s, background 0.5s; }
+
+  .btn-group { display: flex; flex-direction: column; gap: 8px; }
+  .btn {
+    width: 100%;
+    padding: 9px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--green); color: var(--green); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn:active { transform: scale(0.98); }
+
+  .console-wrap {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  #console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 20px;
+    background: var(--bg);
+    font-size: 12.5px;
+    line-height: 1.7;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-entry { display: flex; gap: 12px; padding: 1px 0; }
+  .log-time { color: var(--muted); flex-shrink: 0; font-size: 11px; padding-top: 2px; }
+  .log-msg { flex: 1; word-break: break-all; }
+  .log-info .log-msg { color: var(--text); }
+  .log-error .log-msg { color: var(--red); }
+  .log-warn .log-msg { color: var(--yellow); }
+  .log-chat .log-msg { color: var(--blue); }
+  .log-system .log-msg { color: var(--green); }
+
+  .input-area {
+    padding: 12px 20px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .cmd-type-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  #cmd-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 8px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #cmd-input::placeholder { color: var(--muted); }
+  #cmd-input:focus { border-color: var(--green); }
+
+  #send-btn {
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+  #send-btn:hover { background: var(--green); color: var(--bg); }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .tag-chat { background: #1e3a5f; color: var(--blue); }
+  .tag-cmd { background: #1a2e1a; color: var(--green); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">MC<span>BOT</span> // AFK</div>
+  <div id="status-badge" class="status-disconnected">
+    <div class="dot"></div>
+    <span id="status-text">DISCONNECTED</span>
+  </div>
+</header>
+
+<main>
+  <aside class="sidebar">
+    <div class="card">
+      <div class="card-title">Server</div>
+      <div class="stat-row"><span class="stat-label">Host</span><span class="stat-value" id="s-host">—</span></div>
+      <div class="stat-row"><span class="stat-label">Port</span><span class="stat-value" id="s-port">—</span></div>
+      <div class="stat-row"><span class="stat-label">Username</span><span class="stat-value green" id="s-username">—</span></div>
+      <div class="stat-row"><span class="stat-label">Connected</span><span class="stat-value" id="s-connected-at">—</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Bot Stats</div>
+      <div class="stat-row"><span class="stat-label">Ping</span><span class="stat-value" id="s-ping">—</span></div>
+      <div class="stat-row"><span class="stat-label">Dimension</span><span class="stat-value" id="s-dim">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-value" id="s-mode">—</span></div>
+      <div class="stat-row">
+        <span class="stat-label">Health</span>
+        <span class="stat-value" id="s-health">—</span>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" id="health-bar" style="width:100%;background:var(--green)"></div></div>
+      <div class="stat-row" style="margin-top:8px">
+        <span class="stat-label">Food</span>
+        <span class="stat-value" id="s-food">—</span>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" id="food-bar" style="width:100%;background:var(--yellow)"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Coordinates</div>
+      <div class="coords-box">
+        <div class="coord"><span class="coord-axis">X</span><span class="coord-val" id="c-x">—</span></div>
+        <div class="coord"><span class="coord-axis">Y</span><span class="coord-val" id="c-y">—</span></div>
+        <div class="coord"><span class="coord-axis">Z</span><span class="coord-val" id="c-z">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Controls</div>
+      <div class="btn-group">
+        <button class="btn" onclick="socket.emit('reconnect_bot')">↺ Reconnect Bot</button>
+        <button class="btn danger" onclick="socket.emit('disconnect_bot')">✕ Disconnect Bot</button>
+        <button class="btn" onclick="clearConsole()">⌫ Clear Console</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="console-wrap">
+    <div class="console-header">
+      <span>Console Output</span>
+      <div style="display:flex;gap:8px">
+        <span class="tag tag-chat">CHAT</span>
+        <span class="tag tag-cmd">CMD</span>
+      </div>
+    </div>
+    <div id="console"></div>
+  </div>
+
+  <div class="input-area">
+    <select class="cmd-type-select" id="cmd-type">
+      <option value="chat">💬 Chat</option>
+      <option value="command">⚡ Command</option>
+    </select>
+    <input id="cmd-input" type="text" placeholder="Type a message or command..." autocomplete="off" />
+    <button id="send-btn" onclick="sendCmd()">SEND</button>
+  </div>
+</main>
+
+<script>
+const socket = io();
+const consoleEl = document.getElementById('console');
+
+socket.on('init', ({ status, botInfo, config, log }) => {
+  document.getElementById('s-host').textContent = config.host;
+  document.getElementById('s-port').textContent = config.port;
+  log.forEach(addLog);
+  updateStatus(status, botInfo);
+});
+
+socket.on('status', ({ status, botInfo }) => updateStatus(status, botInfo));
+socket.on('log', addLog);
+
+function updateStatus(status, info) {
+  const badge = document.getElementById('status-badge');
+  const text = document.getElementById('status-text');
+  badge.className = `status-${status}`;
+  text.textContent = status.toUpperCase();
+
+  document.getElementById('s-username').textContent = info.username || '—';
+  document.getElementById('s-ping').textContent = info.ping != null ? `${info.ping}ms` : '—';
+  document.getElementById('s-dim').textContent = info.dimension || '—';
+  document.getElementById('s-mode').textContent = info.gameMode || '—';
+
+  if (info.connectedAt) {
+    const d = new Date(info.connectedAt);
+    document.getElementById('s-connected-at').textContent = d.toLocaleTimeString();
+  } else {
+    document.getElementById('s-connected-at').textContent = '—';
+  }
+
+  if (info.health != null) {
+    const hp = Math.round(info.health * 10) / 10;
+    document.getElementById('s-health').textContent = `${hp}/20`;
+    const pct = (info.health / 20) * 100;
+    const hbar = document.getElementById('health-bar');
+    hbar.style.width = pct + '%';
+    hbar.style.background = pct > 50 ? 'var(--green)' : pct > 25 ? 'var(--yellow)' : 'var(--red)';
+  } else {
+    document.getElementById('s-health').textContent = '—';
+    document.getElementById('health-bar').style.width = '0%';
+  }
+
+  if (info.food != null) {
+    document.getElementById('s-food').textContent = `${info.food}/20`;
+    document.getElementById('food-bar').style.width = (info.food / 20 * 100) + '%';
+  } else {
+    document.getElementById('s-food').textContent = '—';
+    document.getElementById('food-bar').style.width = '0%';
+  }
+
+  if (info.position) {
+    document.getElementById('c-x').textContent = info.position.x;
+    document.getElementById('c-y').textContent = info.position.y;
+    document.getElementById('c-z').textContent = info.position.z;
+  }
+}
+
+function addLog(entry) {
+  const div = document.createElement('div');
+  div.className = `log-entry log-${entry.type}`;
+  const t = new Date(entry.time).toLocaleTimeString('en-GB', { hour12: false });
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${escHtml(entry.msg)}</span>`;
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+  while (consoleEl.children.length > 300) consoleEl.removeChild(consoleEl.firstChild);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function sendCmd() {
+  const input = document.getElementById('cmd-input');
+  const type = document.getElementById('cmd-type').value;
+  const value = input.value.trim();
+  if (!value) return;
+  socket.emit('cmd', { type, value });
+  input.value = '';
+}
+
+document.getElementById('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendCmd();
+});
+
+function clearConsole() {
+  consoleEl.innerHTML = '';
+}
+</script>
+</body>
+        </html>
