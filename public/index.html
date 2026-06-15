@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MC AFK Bot — Dashboard</title>
+<title>MC AFK Bot</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap');
@@ -32,6 +32,7 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
   }
 
   body::before {
@@ -43,88 +44,120 @@
     z-index: 999;
   }
 
+  /* ── Header ── */
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
 
   .logo {
     font-family: 'Syne', sans-serif;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
-    letter-spacing: -0.5px;
     color: var(--green);
   }
-  .logo span { color: var(--text-dim); font-weight: 700; }
+  .logo span { color: var(--text-dim); }
 
   #status-badge {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
-    padding: 6px 14px;
+    padding: 5px 10px;
     border-radius: 4px;
     border: 1px solid var(--border);
     background: var(--surface2);
-    transition: all 0.3s;
   }
 
   .dot {
-    width: 8px; height: 8px;
+    width: 7px; height: 7px;
     border-radius: 50%;
     background: var(--muted);
-    transition: background 0.3s;
   }
 
-  .status-connected .dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  .status-connected .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
   .status-connecting .dot, .status-reconnecting .dot { background: var(--yellow); animation: pulse 1s infinite; }
   .status-disconnected .dot { background: var(--red); }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50% { opacity: 0.3; }
   }
 
-  main {
+  /* ── Desktop layout ── */
+  .desktop-layout {
+    display: none;
     flex: 1;
-    display: grid;
     grid-template-columns: 280px 1fr;
-    grid-template-rows: auto 1fr;
-    gap: 0;
-    height: calc(100vh - 57px);
+    grid-template-rows: 1fr auto;
+    height: calc(100vh - 49px);
   }
 
-  .sidebar {
-    grid-row: 1 / 3;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-    overflow-y: auto;
-    padding: 20px 16px;
+  /* ── Mobile layout ── */
+  .mobile-layout {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    flex: 1;
   }
 
+  /* ── Tabs (mobile) ── */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 49px;
+    z-index: 99;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 10px 6px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.15s;
+  }
+  .tab.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: flex; flex-direction: column; flex: 1; }
+
+  /* ── Cards ── */
   .card {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 16px;
+    padding: 14px;
+    margin: 10px 12px;
   }
 
   .card-title {
-    font-size: 10px;
+    font-size: 9px;
     letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     font-weight: 600;
   }
 
@@ -132,7 +165,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 5px 0;
+    padding: 6px 0;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
   }
@@ -140,77 +173,61 @@
   .stat-label { color: var(--text-dim); }
   .stat-value { color: var(--text); font-weight: 600; }
   .stat-value.green { color: var(--green); }
-  .stat-value.red { color: var(--red); }
-  .stat-value.yellow { color: var(--yellow); }
 
-  .coords-box {
+  /* coords grid */
+  .coords-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .coord-box {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 10px 12px;
-    font-size: 13px;
-    line-height: 1.8;
+    padding: 10px 8px;
+    text-align: center;
   }
-  .coord { display: flex; gap: 8px; }
-  .coord-axis { color: var(--text-dim); width: 14px; }
-  .coord-val { color: var(--green); font-weight: 600; }
+  .coord-axis { font-size: 10px; color: var(--text-dim); margin-bottom: 4px; }
+  .coord-val { font-size: 13px; color: var(--green); font-weight: 700; }
 
-  .bar-wrap { height: 6px; background: var(--bg); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  /* bars */
+  .bar-wrap { height: 5px; background: var(--bg); border-radius: 3px; margin-top: 5px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s, background 0.5s; }
 
-  .btn-group { display: flex; flex-direction: column; gap: 8px; }
+  /* buttons */
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn {
-    width: 100%;
-    padding: 9px 14px;
+    padding: 10px 8px;
     border-radius: 4px;
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--text);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
-    text-align: left;
-    letter-spacing: 0.5px;
+    text-align: center;
   }
-  .btn:hover { background: var(--surface2); border-color: var(--green); color: var(--green); }
-  .btn.danger:hover { border-color: var(--red); color: var(--red); }
-  .btn:active { transform: scale(0.98); }
+  .btn:active { transform: scale(0.96); }
+  .btn.green-btn { border-color: var(--green); color: var(--green); }
+  .btn.red-btn { border-color: var(--red); color: var(--red); }
+  .btn.full { grid-column: 1 / -1; }
 
-  .console-wrap {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .console-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 20px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--text-dim);
-  }
-
-  #console {
+  /* ── Console ── */
+  #console-mobile {
     flex: 1;
     overflow-y: auto;
-    padding: 12px 20px;
+    padding: 10px 12px;
     background: var(--bg);
-    font-size: 12.5px;
+    font-size: 11.5px;
     line-height: 1.7;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    min-height: 200px;
+    max-height: calc(100vh - 200px);
   }
 
-  .log-entry { display: flex; gap: 12px; padding: 1px 0; }
-  .log-time { color: var(--muted); flex-shrink: 0; font-size: 11px; padding-top: 2px; }
+  .log-entry { display: flex; gap: 8px; padding: 1px 0; }
+  .log-time { color: var(--muted); flex-shrink: 0; font-size: 10px; padding-top: 2px; }
   .log-msg { flex: 1; word-break: break-all; }
   .log-info .log-msg { color: var(--text); }
   .log-error .log-msg { color: var(--red); }
@@ -218,13 +235,16 @@
   .log-chat .log-msg { color: var(--blue); }
   .log-system .log-msg { color: var(--green); }
 
+  /* ── Input area ── */
   .input-area {
-    padding: 12px 20px;
+    padding: 10px 12px;
     background: var(--surface);
     border-top: 1px solid var(--border);
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
+    position: sticky;
+    bottom: 0;
   }
 
   .cmd-type-select {
@@ -232,11 +252,11 @@
     border: 1px solid var(--border);
     color: var(--text-dim);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    padding: 8px 10px;
+    font-size: 11px;
+    padding: 8px 6px;
     border-radius: 4px;
     outline: none;
-    cursor: pointer;
+    flex-shrink: 0;
   }
 
   #cmd-input {
@@ -247,11 +267,10 @@
     color: var(--text);
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    padding: 8px 14px;
+    padding: 8px 10px;
     outline: none;
-    transition: border-color 0.2s;
+    min-width: 0;
   }
-  #cmd-input::placeholder { color: var(--muted); }
   #cmd-input:focus { border-color: var(--green); }
 
   #send-btn {
@@ -261,27 +280,94 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     font-weight: 700;
-    padding: 8px 18px;
+    padding: 8px 14px;
     border-radius: 4px;
     cursor: pointer;
-    letter-spacing: 1px;
-    transition: all 0.15s;
+    flex-shrink: 0;
   }
-  #send-btn:hover { background: var(--green); color: var(--bg); }
+  #send-btn:active { background: var(--green); color: var(--bg); }
 
-  ::-webkit-scrollbar { width: 5px; }
+  /* ── Desktop styles ── */
+  @media (min-width: 768px) {
+    .mobile-layout { display: none; }
+    .desktop-layout {
+      display: grid;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      grid-row: 1 / 3;
+    }
+
+    .sidebar .card {
+      margin: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .console-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    #console-desktop {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 20px;
+      background: var(--bg);
+      font-size: 12.5px;
+      line-height: 1.7;
+    }
+
+    .desktop-input {
+      padding: 12px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .desktop-input .cmd-type-select { font-size: 12px; padding: 8px 10px; }
+    .desktop-input #cmd-input-desktop { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 8px 14px; outline: none; }
+    .desktop-input #cmd-input-desktop:focus { border-color: var(--green); }
+    .desktop-input #send-btn-desktop { background: var(--green-dim); border: 1px solid var(--green); color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; padding: 8px 18px; border-radius: 4px; cursor: pointer; }
+    .desktop-input #send-btn-desktop:hover { background: var(--green); color: var(--bg); }
+
+    .sidebar .coords-grid { grid-template-columns: 1fr 1fr 1fr; }
+    .sidebar .btn-grid { grid-template-columns: 1fr; }
+    .sidebar .btn { text-align: left; }
+
+    .tag { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 700; }
+    .tag-chat { background: #1e3a5f; color: var(--blue); }
+    .tag-cmd { background: #1a2e1a; color: var(--green); }
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-  .tag {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 3px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-  .tag-chat { background: #1e3a5f; color: var(--blue); }
-  .tag-cmd { background: #1a2e1a; color: var(--green); }
 </style>
 </head>
 <body>
@@ -294,48 +380,105 @@
   </div>
 </header>
 
-<main>
-  <aside class="sidebar">
+<!-- ══ MOBILE LAYOUT ══ -->
+<div class="mobile-layout">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('stats')">📊 Stats</button>
+    <button class="tab" onclick="switchTab('console')">🖥 Console</button>
+    <button class="tab" onclick="switchTab('controls')">🎮 Controls</button>
+  </div>
+
+  <!-- Stats tab -->
+  <div class="tab-content active" id="tab-stats">
     <div class="card">
       <div class="card-title">Server</div>
-      <div class="stat-row"><span class="stat-label">Host</span><span class="stat-value" id="s-host">—</span></div>
-      <div class="stat-row"><span class="stat-label">Port</span><span class="stat-value" id="s-port">—</span></div>
-      <div class="stat-row"><span class="stat-label">Username</span><span class="stat-value green" id="s-username">—</span></div>
-      <div class="stat-row"><span class="stat-label">Connected</span><span class="stat-value" id="s-connected-at">—</span></div>
+      <div class="stat-row"><span class="stat-label">Host</span><span class="stat-value" id="m-host">—</span></div>
+      <div class="stat-row"><span class="stat-label">Port</span><span class="stat-value" id="m-port">—</span></div>
+      <div class="stat-row"><span class="stat-label">Username</span><span class="stat-value green" id="m-username">—</span></div>
+      <div class="stat-row"><span class="stat-label">Since</span><span class="stat-value" id="m-connected-at">—</span></div>
     </div>
 
     <div class="card">
       <div class="card-title">Bot Stats</div>
-      <div class="stat-row"><span class="stat-label">Ping</span><span class="stat-value" id="s-ping">—</span></div>
-      <div class="stat-row"><span class="stat-label">Dimension</span><span class="stat-value" id="s-dim">—</span></div>
-      <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-value" id="s-mode">—</span></div>
-      <div class="stat-row">
-        <span class="stat-label">Health</span>
-        <span class="stat-value" id="s-health">—</span>
-      </div>
-      <div class="bar-wrap"><div class="bar-fill" id="health-bar" style="width:100%;background:var(--green)"></div></div>
-      <div class="stat-row" style="margin-top:8px">
-        <span class="stat-label">Food</span>
-        <span class="stat-value" id="s-food">—</span>
-      </div>
-      <div class="bar-wrap"><div class="bar-fill" id="food-bar" style="width:100%;background:var(--yellow)"></div></div>
+      <div class="stat-row"><span class="stat-label">Ping</span><span class="stat-value" id="m-ping">—</span></div>
+      <div class="stat-row"><span class="stat-label">Dimension</span><span class="stat-value" id="m-dim">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-value" id="m-mode">—</span></div>
+      <div class="stat-row"><span class="stat-label">Health</span><span class="stat-value" id="m-health">—</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="m-health-bar" style="width:100%;background:var(--green)"></div></div>
+      <div class="stat-row" style="margin-top:8px"><span class="stat-label">Food</span><span class="stat-value" id="m-food">—</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="m-food-bar" style="width:100%;background:var(--yellow)"></div></div>
     </div>
 
     <div class="card">
       <div class="card-title">Coordinates</div>
-      <div class="coords-box">
-        <div class="coord"><span class="coord-axis">X</span><span class="coord-val" id="c-x">—</span></div>
-        <div class="coord"><span class="coord-axis">Y</span><span class="coord-val" id="c-y">—</span></div>
-        <div class="coord"><span class="coord-axis">Z</span><span class="coord-val" id="c-z">—</span></div>
+      <div class="coords-grid">
+        <div class="coord-box"><div class="coord-axis">X</div><div class="coord-val" id="m-x">—</div></div>
+        <div class="coord-box"><div class="coord-axis">Y</div><div class="coord-val" id="m-y">—</div></div>
+        <div class="coord-box"><div class="coord-axis">Z</div><div class="coord-val" id="m-z">—</div></div>
       </div>
     </div>
+  </div>
 
+  <!-- Console tab -->
+  <div class="tab-content" id="tab-console">
+    <div id="console-mobile"></div>
+    <div class="input-area">
+      <select class="cmd-type-select" id="m-cmd-type">
+        <option value="chat">💬</option>
+        <option value="command">⚡</option>
+      </select>
+      <input id="cmd-input" type="text" placeholder="Message or command..." autocomplete="off" />
+      <button id="send-btn" onclick="sendCmd('mobile')">SEND</button>
+    </div>
+  </div>
+
+  <!-- Controls tab -->
+  <div class="tab-content" id="tab-controls">
+    <div class="card">
+      <div class="card-title">Bot Controls</div>
+      <div class="btn-grid">
+        <button class="btn green-btn" onclick="socket.emit('reconnect_bot')">↺ Reconnect</button>
+        <button class="btn red-btn" onclick="socket.emit('disconnect_bot')">✕ Disconnect</button>
+        <button class="btn full" onclick="clearConsole()">⌫ Clear Console</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DESKTOP LAYOUT ══ -->
+<div class="desktop-layout">
+  <aside class="sidebar">
+    <div class="card">
+      <div class="card-title">Server</div>
+      <div class="stat-row"><span class="stat-label">Host</span><span class="stat-value" id="d-host">—</span></div>
+      <div class="stat-row"><span class="stat-label">Port</span><span class="stat-value" id="d-port">—</span></div>
+      <div class="stat-row"><span class="stat-label">Username</span><span class="stat-value green" id="d-username">—</span></div>
+      <div class="stat-row"><span class="stat-label">Since</span><span class="stat-value" id="d-connected-at">—</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Bot Stats</div>
+      <div class="stat-row"><span class="stat-label">Ping</span><span class="stat-value" id="d-ping">—</span></div>
+      <div class="stat-row"><span class="stat-label">Dimension</span><span class="stat-value" id="d-dim">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-value" id="d-mode">—</span></div>
+      <div class="stat-row"><span class="stat-label">Health</span><span class="stat-value" id="d-health">—</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="d-health-bar" style="width:100%;background:var(--green)"></div></div>
+      <div class="stat-row" style="margin-top:8px"><span class="stat-label">Food</span><span class="stat-value" id="d-food">—</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="d-food-bar" style="width:100%;background:var(--yellow)"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Coordinates</div>
+      <div class="coords-grid">
+        <div class="coord-box"><div class="coord-axis">X</div><div class="coord-val" id="d-x">—</div></div>
+        <div class="coord-box"><div class="coord-axis">Y</div><div class="coord-val" id="d-y">—</div></div>
+        <div class="coord-box"><div class="coord-axis">Z</div><div class="coord-val" id="d-z">—</div></div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">Controls</div>
-      <div class="btn-group">
-        <button class="btn" onclick="socket.emit('reconnect_bot')">↺ Reconnect Bot</button>
-        <button class="btn danger" onclick="socket.emit('disconnect_bot')">✕ Disconnect Bot</button>
-        <button class="btn" onclick="clearConsole()">⌫ Clear Console</button>
+      <div class="btn-grid">
+        <button class="btn green-btn" onclick="socket.emit('reconnect_bot')">↺ Reconnect Bot</button>
+        <button class="btn red-btn" onclick="socket.emit('disconnect_bot')">✕ Disconnect Bot</button>
+        <button class="btn full" onclick="clearConsole()">⌫ Clear Console</button>
       </div>
     </div>
   </aside>
@@ -348,26 +491,34 @@
         <span class="tag tag-cmd">CMD</span>
       </div>
     </div>
-    <div id="console"></div>
+    <div id="console-desktop"></div>
   </div>
 
-  <div class="input-area">
-    <select class="cmd-type-select" id="cmd-type">
+  <div class="desktop-input">
+    <select class="cmd-type-select" id="d-cmd-type">
       <option value="chat">💬 Chat</option>
       <option value="command">⚡ Command</option>
     </select>
-    <input id="cmd-input" type="text" placeholder="Type a message or command..." autocomplete="off" />
-    <button id="send-btn" onclick="sendCmd()">SEND</button>
+    <input id="cmd-input-desktop" type="text" placeholder="Type a message or command..." autocomplete="off" />
+    <button id="send-btn-desktop" onclick="sendCmd('desktop')">SEND</button>
   </div>
-</main>
+</div>
 
 <script>
 const socket = io();
-const consoleEl = document.getElementById('console');
+const isMobile = () => window.innerWidth < 768;
 
+// ── Tab switching ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+// ── Socket ──
 socket.on('init', ({ status, botInfo, config, log }) => {
-  document.getElementById('s-host').textContent = config.host;
-  document.getElementById('s-port').textContent = config.port;
+  setHost(config.host, config.port);
   log.forEach(addLog);
   updateStatus(status, botInfo);
 });
@@ -375,81 +526,62 @@ socket.on('init', ({ status, botInfo, config, log }) => {
 socket.on('status', ({ status, botInfo }) => updateStatus(status, botInfo));
 socket.on('log', addLog);
 
+function setHost(host, port) {
+  ['m-host','d-host'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = host; });
+  ['m-port','d-port'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = port; });
+}
+
+// ── Status ──
 function updateStatus(status, info) {
   const badge = document.getElementById('status-badge');
-  const text = document.getElementById('status-text');
   badge.className = `status-${status}`;
-  text.textContent = status.toUpperCase();
+  document.getElementById('status-text').textContent = status.toUpperCase();
 
-  document.getElementById('s-username').textContent = info.username || '—';
-  document.getElementById('s-ping').textContent = info.ping != null ? `${info.ping}ms` : '—';
-  document.getElementById('s-dim').textContent = info.dimension || '—';
-  document.getElementById('s-mode').textContent = info.gameMode || '—';
+  const sets = [
+    ['m-username','d-username', info.username || '—'],
+    ['m-ping','d-ping', info.ping != null ? `${info.ping}ms` : '—'],
+    ['m-dim','d-dim', info.dimension || '—'],
+    ['m-mode','d-mode', info.gameMode || '—'],
+  ];
+  sets.forEach(([m, d, val]) => {
+    const me = document.getElementById(m); if(me) me.textContent = val;
+    const de = document.getElementById(d); if(de) de.textContent = val;
+  });
 
   if (info.connectedAt) {
-    const d = new Date(info.connectedAt);
-    document.getElementById('s-connected-at').textContent = d.toLocaleTimeString();
-  } else {
-    document.getElementById('s-connected-at').textContent = '—';
+    const t = new Date(info.connectedAt).toLocaleTimeString();
+    ['m-connected-at','d-connected-at'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = t; });
   }
 
   if (info.health != null) {
     const hp = Math.round(info.health * 10) / 10;
-    document.getElementById('s-health').textContent = `${hp}/20`;
     const pct = (info.health / 20) * 100;
-    const hbar = document.getElementById('health-bar');
-    hbar.style.width = pct + '%';
-    hbar.style.background = pct > 50 ? 'var(--green)' : pct > 25 ? 'var(--yellow)' : 'var(--red)';
-  } else {
-    document.getElementById('s-health').textContent = '—';
-    document.getElementById('health-bar').style.width = '0%';
+    const bg = pct > 50 ? 'var(--green)' : pct > 25 ? 'var(--yellow)' : 'var(--red)';
+    ['m-health','d-health'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = `${hp}/20`; });
+    ['m-health-bar','d-health-bar'].forEach(id => { const el = document.getElementById(id); if(el) { el.style.width = pct+'%'; el.style.background = bg; } });
   }
 
   if (info.food != null) {
-    document.getElementById('s-food').textContent = `${info.food}/20`;
-    document.getElementById('food-bar').style.width = (info.food / 20 * 100) + '%';
-  } else {
-    document.getElementById('s-food').textContent = '—';
-    document.getElementById('food-bar').style.width = '0%';
+    const pct = (info.food / 20 * 100);
+    ['m-food','d-food'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = `${info.food}/20`; });
+    ['m-food-bar','d-food-bar'].forEach(id => { const el = document.getElementById(id); if(el) el.style.width = pct+'%'; });
   }
 
   if (info.position) {
-    document.getElementById('c-x').textContent = info.position.x;
-    document.getElementById('c-y').textContent = info.position.y;
-    document.getElementById('c-z').textContent = info.position.z;
+    [['m-x','d-x', info.position.x], ['m-y','d-y', info.position.y], ['m-z','d-z', info.position.z]].forEach(([m,d,v]) => {
+      const me = document.getElementById(m); if(me) me.textContent = v;
+      const de = document.getElementById(d); if(de) de.textContent = v;
+    });
   }
 }
 
+// ── Log ──
 function addLog(entry) {
-  const div = document.createElement('div');
-  div.className = `log-entry log-${entry.type}`;
   const t = new Date(entry.time).toLocaleTimeString('en-GB', { hour12: false });
-  div.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${escHtml(entry.msg)}</span>`;
-  consoleEl.appendChild(div);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
-  while (consoleEl.children.length > 300) consoleEl.removeChild(consoleEl.firstChild);
-}
+  const html = `<div class="log-entry log-${entry.type}"><span class="log-time">${t}</span><span class="log-msg">${escHtml(entry.msg)}</span></div>`;
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function sendCmd() {
-  const input = document.getElementById('cmd-input');
-  const type = document.getElementById('cmd-type').value;
-  const value = input.value.trim();
-  if (!value) return;
-  socket.emit('cmd', { type, value });
-  input.value = '';
-}
-
-document.getElementById('cmd-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') sendCmd();
-});
-
-function clearConsole() {
-  consoleEl.innerHTML = '';
-}
-</script>
-</body>
-        </html>
+  ['console-mobile','console-desktop'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.insertAdjacentHTML('beforeend', html);
+    el.scrollTop = el.scrollHeigh
