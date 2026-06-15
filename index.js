@@ -13,7 +13,7 @@ const CONFIG = {
   host: process.env.MC_HOST || 'Bhikmanges.aternos.me',
   port: parseInt(process.env.MC_PORT) || 25615,
   username: process.env.MC_USERNAME || 'Bhikmangya',
-  version: process.env.MC_VERSION || undefined,
+  version: process.env.MC_VERSION || '1.20.1',
   webPort: parseInt(process.env.WEB_PORT) || 3000,
   reconnectDelay: 5000,
   afkInterval: 3000,
@@ -23,6 +23,8 @@ const CONFIG = {
 let bot = null;
 let reconnectTimer = null;
 let afkTimer = null;
+let walkTimer = null;
+let jumpTimer = null;
 let consoleLog = [];
 let status = 'disconnected'; // disconnected | connecting | connected | reconnecting
 let botInfo = {
@@ -88,12 +90,62 @@ function startAFK() {
       io.emit('status', { status, botInfo });
     }
   }, CONFIG.afkInterval);
+
+  // Kick off randomized walking and jumping loops
+  scheduleWalk();
+  scheduleJump();
+}
+
+// Take a short forward or back step, then schedule the next one after a
+// random gap so the movement doesn't follow a fixed, detectable pattern.
+function scheduleWalk() {
+  const delay = 4000 + Math.random() * 6000; // next step in 4-10s
+  walkTimer = setTimeout(() => {
+    if (bot && status === 'connected') {
+      const dir = Math.random() < 0.5 ? 'forward' : 'back';
+      const stepDuration = 500 + Math.random() * 1000; // hold for 0.5-1.5s
+
+      bot.setControlState(dir, true);
+      setTimeout(() => {
+        if (bot) bot.setControlState(dir, false);
+      }, stepDuration);
+    }
+    scheduleWalk();
+  }, delay);
+}
+
+// Occasionally jump in place, on a random timer.
+function scheduleJump() {
+  const delay = 8000 + Math.random() * 12000; // jump every 8-20s
+  jumpTimer = setTimeout(() => {
+    if (bot && status === 'connected') {
+      bot.setControlState('jump', true);
+      setTimeout(() => {
+        if (bot) bot.setControlState('jump', false);
+      }, 250);
+    }
+    scheduleJump();
+  }, delay);
 }
 
 function stopAFK() {
   if (afkTimer) {
     clearInterval(afkTimer);
     afkTimer = null;
+  }
+  if (walkTimer) {
+    clearTimeout(walkTimer);
+    walkTimer = null;
+  }
+  if (jumpTimer) {
+    clearTimeout(jumpTimer);
+    jumpTimer = null;
+  }
+  // Release any held movement keys so the bot doesn't get stuck mid-step
+  if (bot) {
+    ['forward', 'back', 'left', 'right', 'jump', 'sneak'].forEach((c) => {
+      try { bot.setControlState(c, false); } catch (_) {}
+    });
   }
 }
 
