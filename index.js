@@ -17,6 +17,7 @@ const CONFIG = {
   webPort: parseInt(process.env.WEB_PORT) || 3000,
   reconnectDelay: 5000,
   afkInterval: 3000,
+  autoSleep: process.env.MC_AUTO_SLEEP !== 'false', // set to "false" to disable
 };
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ let reconnectTimer = null;
 let afkTimer = null;
 let walkTimer = null;
 let jumpTimer = null;
+let sleepTimer = null;
 let consoleLog = [];
 let status = 'disconnected'; // disconnected | connecting | connected | reconnecting
 let botInfo = {
@@ -94,20 +96,33 @@ function startAFK() {
   // Kick off randomized walking and jumping loops
   scheduleWalk();
   scheduleJump();
+  if (CONFIG.autoSleep) scheduleSleep();
 }
 
-// Take a short forward or back step, then schedule the next one after a
-// random gap so the movement doesn't follow a fixed, detectable pattern.
-function scheduleWalk() {
-  const delay = 4000 + Math.random() * 6000; // next step in 4-10s
-  walkTimer = setTimeout(() => {
-    if (bot && status === 'connected') {
-      const dir = Math.random() < 0.5 ? 'forward' : 'back';
-      const stepDuration = 500 + Math.random() * 1000; // hold for 0.5-1.5s
+// Step out in a random direction, hold, then walk straight back to the
+// same spot, then wait a random gap before picking a new direction.
+const OPPOSITE_DIR = { forward: 'back', back: 'forward', left: 'right', right: 'left' };
 
+function scheduleWalk() {
+  const delay = 4000 + Math.random() * 6000; // wait 4-10s before next move
+  walkTimer = setTimeout(() => {
+    if (bot && status === 'connected' && !bot.isSleeping) {
+      const directions = ['forward', 'back', 'left', 'right'];
+      const dir = directions[Math.floor(Math.random() * directions.length)];
+      const back = OPPOSITE_DIR[dir];
+      const stepDuration = 500 + Math.random() * 1000; // 0.5-1.5s out, same time back
+
+      // Step away from origin
       bot.setControlState(dir, true);
       setTimeout(() => {
-        if (bot) bot.setControlState(dir, false);
+        if (!bot) return;
+        bot.setControlState(dir, false);
+
+        // Walk back to origin
+        bot.setControlState(back, true);
+        setTimeout(() => {
+          if (bot) bot.setControlState(back, false);
+        }, stepDuration);
       }, stepDuration);
     }
     scheduleWalk();
@@ -118,7 +133,7 @@ function scheduleWalk() {
 function scheduleJump() {
   const delay = 8000 + Math.random() * 12000; // jump every 8-20s
   jumpTimer = setTimeout(() => {
-    if (bot && status === 'connected') {
+    if (bot && status === 'connected' && !bot.isSleeping) {
       bot.setControlState('jump', true);
       setTimeout(() => {
         if (bot) bot.setControlState('jump', false);
@@ -126,6 +141,42 @@ function scheduleJump() {
     }
     scheduleJump();
   }, delay);
+}
+
+// Find a bed block within reach of the bot.
+function findBed() {
+  if (!bot || !bot.registry) return null;
+  const bedIds = bot.registry.blocksArray
+    .filter((b) => b.name.endsWith('_bed'))
+    .map((b) => b.id);
+
+  return bot.findBlock({
+    matching: (block) => bedIds.includes(block.type),
+    maxDistance: 8,
+  });
+}
+
+// Every ~15s, check whether it's night and the bot should hop into bed,
+// or whether it's day and the bot should get back up.
+function scheduleSleep() {
+  sleepTimer = setTimeout(() => {
+    if (bot && status === 'connected' && bot.time) {
+      const t = bot.time.timeOfDay; // 0-24000
+      const canSleep = t >= 12541 && t <= 23458; // Minecraft's "sleepable" window
+
+      if (bot.isSleeping) {
+        if (!canSleep) {
+          bot.wake().catch((err) => log(`Wake failed: ${err.message}`, 'warn'));
+        }
+      } else if (canSleep) {
+        const bed = findBed();
+        if (bed) {
+          bot.sleep(bed).catch((err) => log(`Sleep failed: ${err.message}`, 'warn'));
+        }
+      }
+    }
+    scheduleSleep();
+  }, 15000);
 }
 
 function stopAFK() {
@@ -141,11 +192,18 @@ function stopAFK() {
     clearTimeout(jumpTimer);
     jumpTimer = null;
   }
+  if (sleepTimer) {
+    clearTimeout(sleepTimer);
+    sleepTimer = null;
+  }
   // Release any held movement keys so the bot doesn't get stuck mid-step
   if (bot) {
     ['forward', 'back', 'left', 'right', 'jump', 'sneak'].forEach((c) => {
       try { bot.setControlState(c, false); } catch (_) {}
     });
+    if (bot.isSleeping) {
+      bot.wake().catch(() => {});
+    }
   }
 }
 
@@ -205,6 +263,14 @@ function createBot() {
     if (bot.health <= 2) {
       log(`⚠ Critical health: ${bot.health}`, 'warn');
     }
+  });
+
+  bot.on('sleep', () => {
+    log('💤 Went to sleep', 'system');
+  });
+
+  bot.on('wake', () => {
+    log('☀ Woke up', 'system');
   });
 
   bot.on('kicked', (reason) => {
