@@ -103,36 +103,6 @@ function startAFK() {
 // same spot, then wait a random gap before picking a new direction.
 const OPPOSITE_DIR = { forward: 'back', back: 'forward', left: 'right', right: 'left' };
 
-// Direction vectors relative to the bot's own yaw (mineflayer convention:
-// yaw 0 faces -Z, increases clockwise).
-function dirOffset(dir, yaw) {
-  // base forward vector
-  let angle = yaw;
-  if (dir === 'back') angle = yaw + Math.PI;
-  if (dir === 'left') angle = yaw + Math.PI / 2;
-  if (dir === 'right') angle = yaw - Math.PI / 2;
-  return {
-    x: -Math.sin(angle),
-    z: -Math.cos(angle),
-  };
-}
-
-// Checks the block directly ahead (at foot and head height) in the given
-// direction. Returns false if it's solid (can't walk into it).
-function isPathClear(dir) {
-  if (!bot || !bot.entity) return false;
-  const off = dirOffset(dir, bot.entity.yaw);
-
-  for (const dy of [0, 1]) {
-    const checkPos = bot.entity.position.offset(off.x, dy, off.z);
-    const block = bot.blockAt(checkPos);
-    if (block && block.boundingBox === 'block') {
-      return false; // solid block in the way
-    }
-  }
-  return true;
-}
-
 // Checks if the block the bot is currently standing in/on is water or lava.
 function isInLiquid() {
   if (!bot || !bot.entity) return false;
@@ -148,14 +118,6 @@ function scheduleWalk() {
     if (bot && status === 'connected' && !bot.isSleeping) {
       const directions = ['forward', 'back', 'left', 'right'];
       const dir = directions[Math.floor(Math.random() * directions.length)];
-
-      if (!isPathClear(dir)) {
-        // Blocked ahead — skip this cycle, try a different direction next time
-        log(`Path blocked to the ${dir}, staying put`, 'system');
-        scheduleWalk();
-        return;
-      }
-
       const back = OPPOSITE_DIR[dir];
       const stepDuration = 500 + Math.random() * 1000; // 0.5-1.5s out, same time back
 
