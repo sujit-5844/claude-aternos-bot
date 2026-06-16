@@ -27,6 +27,7 @@ let afkTimer = null;
 let walkTimer = null;
 let jumpTimer = null;
 let sleepTimer = null;
+let originPos = null; // the spot the bot returns to after each walk
 let consoleLog = [];
 let status = 'disconnected'; // disconnected | connecting | connected | reconnecting
 let botInfo = {
@@ -99,9 +100,13 @@ function startAFK() {
   if (CONFIG.autoSleep) scheduleSleep();
 }
 
-// Step out in a random direction, hold, then walk straight back to the
-// same spot, then wait a random gap before picking a new direction.
+// Walk straight out from origin to a random target distance, then walk
+// straight back until actually within range of the origin coordinate —
+// based on real position tracking, not timing. After returning, waits a
+// random gap before picking a new direction.
 const OPPOSITE_DIR = { forward: 'back', back: 'forward', left: 'right', right: 'left' };
+const ARRIVE_THRESHOLD = 0.3; // blocks — how close counts as "back at origin"
+const WALK_TIMEOUT = 8000;    // safety cap per leg, in case bot gets stuck
 
 // Checks if the block the bot is currently standing in/on is water or lava.
 function isInLiquid() {
@@ -112,56 +117,88 @@ function isInLiquid() {
     block.name === 'flowing_water' || block.name === 'flowing_lava';
 }
 
+// Walks in `dir` and polls real position every 100ms until either:
+// - distance traveled from the start point reaches `targetDistance`, or
+// - distance to `originPos` shrinks to under ARRIVE_THRESHOLD (used when
+//   returning), or
+// - liquid is detected underfoot, or
+// - WALK_TIMEOUT is hit (failsafe so it never walks forever)
+// Calls `onDone(reason)` when finished, reason is 'distance' | 'arrived' | 'liquid' | 'timeout'.
+function walkUntil(dir, { targetDistance = null, returning = false } = {}, onDone) {
+  if (!bot || !bot.entity) { onDone('error'); return; }
+  const startPos = bot.entity.position.clone();
+  bot.setControlState(dir, true);
+
+  const startTime = Date.now();
+  const poll = setInterval(() => {
+    if (!bot || !bot.entity) {
+      clearInterval(poll);
+      onDone('error');
+      return;
+    }
+
+    if (isInLiquid()) {
+      clearInterval(poll);
+      bot.setControlState(dir, false);
+      onDone('liquid');
+      return;
+    }
+
+    if (Date.now() - startTime > WALK_TIMEOUT) {
+      clearInterval(poll);
+      bot.setControlState(dir, false);
+      onDone('timeout');
+      return;
+    }
+
+    if (returning && originPos) {
+      const distToOrigin = bot.entity.position.distanceTo(originPos);
+      if (distToOrigin <= ARRIVE_THRESHOLD) {
+        clearInterval(poll);
+        bot.setControlState(dir, false);
+        onDone('arrived');
+        return;
+      }
+    } else if (targetDistance !== null) {
+      const traveled = bot.entity.position.distanceTo(startPos);
+      if (traveled >= targetDistance) {
+        clearInterval(poll);
+        bot.setControlState(dir, false);
+        onDone('distance');
+        return;
+      }
+    }
+  }, 100);
+}
+
 function scheduleWalk() {
   const delay = 4000 + Math.random() * 6000; // wait 4-10s before next move
   walkTimer = setTimeout(() => {
-    if (bot && status === 'connected' && !bot.isSleeping) {
+    if (bot && status === 'connected' && !bot.isSleeping && originPos) {
       const directions = ['forward', 'back', 'left', 'right'];
       const dir = directions[Math.floor(Math.random() * directions.length)];
       const back = OPPOSITE_DIR[dir];
-      const stepDuration = 500 + Math.random() * 1000; // 0.5-1.5s out, same time back
+      const targetDistance = 4 + Math.random() * 4; // walk out 4-8 blocks
 
-      // Step away from origin, watching for liquid underfoot the whole time
-      bot.setControlState(dir, true);
-      const liquidWatch = setInterval(() => {
-        if (isInLiquid()) {
-          clearInterval(liquidWatch);
-          returnToOriginAndRedirect(dir);
+      // Leg 1: walk out to the target distance
+      walkUntil(dir, { targetDistance }, (reason) => {
+        if (reason === 'liquid') {
+          log('⚠ Liquid detected, returning to origin', 'warn');
         }
-      }, 150);
+        if (!bot) { scheduleWalk(); return; }
 
-      setTimeout(() => {
-        clearInterval(liquidWatch);
-        if (!bot) return;
-        bot.setControlState(dir, false);
-
-        if (isInLiquid()) {
-          returnToOriginAndRedirect(dir);
-          return;
-        }
-
-        // Walk back to origin
-        bot.setControlState(back, true);
-        setTimeout(() => {
-          if (bot) bot.setControlState(back, false);
-        }, stepDuration);
-      }, stepDuration);
+        // Leg 2: walk back until actually at origin (within threshold)
+        walkUntil(back, { returning: true }, (returnReason) => {
+          if (returnReason === 'timeout') {
+            log('Return walk timed out, may be off course', 'warn');
+          }
+          scheduleWalk();
+        });
+      });
+    } else {
+      scheduleWalk();
     }
-    scheduleWalk();
   }, delay);
-}
-
-// Hit water/lava: stop, reverse straight back to origin, then pick a fresh
-// direction on the next cycle instead of continuing the current one.
-function returnToOriginAndRedirect(dir) {
-  if (!bot) return;
-  log(`⚠ Liquid detected, returning to origin`, 'warn');
-  bot.setControlState(dir, false);
-  const back = OPPOSITE_DIR[dir];
-  bot.setControlState(back, true);
-  setTimeout(() => {
-    if (bot) bot.setControlState(back, false);
-  }, 1200); // slightly longer hold to make sure it clears the liquid
 }
 
 // Occasionally jump in place, on a random timer.
@@ -281,6 +318,12 @@ function createBot() {
     botInfo.gameMode = bot.game?.gameMode;
     log(`Spawned in ${bot.game?.dimension ?? 'unknown'}`, 'info');
     io.emit('status', { status, botInfo });
+
+    // Lock in the origin point the bot should always return to
+    if (bot.entity) {
+      originPos = bot.entity.position.clone();
+      log(`Origin set at (${originPos.x.toFixed(1)}, ${originPos.y.toFixed(1)}, ${originPos.z.toFixed(1)})`, 'system');
+    }
   });
 
   bot.on('chat', (username, message) => {
@@ -324,6 +367,7 @@ function createBot() {
     if (status === 'connected') {
       setStatus('reconnecting');
     }
+    originPos = null; // fresh origin will be set on next spawn
     stopAFK();
     scheduleReconnect();
   });
