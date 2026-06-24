@@ -100,15 +100,10 @@ function startAFK() {
   if (CONFIG.autoSleep) scheduleSleep();
 }
 
-// Walk straight out from origin to a random target distance, then walk
-// straight back until actually within range of the origin coordinate —
-// based on real position tracking, not timing. After returning, waits a
-// random gap before picking a new direction.
 const OPPOSITE_DIR = { forward: 'back', back: 'forward', left: 'right', right: 'left' };
-const ARRIVE_THRESHOLD = 0.3; // blocks — how close counts as "back at origin"
-const WALK_TIMEOUT = 8000;    // safety cap per leg, in case bot gets stuck
+const ARRIVE_THRESHOLD = 0.3;
+const WALK_TIMEOUT = 8000;
 
-// Checks if the block the bot is currently standing in/on is water or lava.
 function isInLiquid() {
   if (!bot || !bot.entity) return false;
   const block = bot.blockAt(bot.entity.position);
@@ -117,13 +112,6 @@ function isInLiquid() {
     block.name === 'flowing_water' || block.name === 'flowing_lava';
 }
 
-// Walks in `dir` and polls real position every 100ms until either:
-// - distance traveled from the start point reaches `targetDistance`, or
-// - distance to `originPos` shrinks to under ARRIVE_THRESHOLD (used when
-//   returning), or
-// - liquid is detected underfoot, or
-// - WALK_TIMEOUT is hit (failsafe so it never walks forever)
-// Calls `onDone(reason)` when finished, reason is 'distance' | 'arrived' | 'liquid' | 'timeout'.
 function walkUntil(dir, { targetDistance = null, returning = false } = {}, onDone) {
   if (!bot || !bot.entity) { onDone('error'); return; }
   const startPos = bot.entity.position.clone();
@@ -172,22 +160,17 @@ function walkUntil(dir, { targetDistance = null, returning = false } = {}, onDon
 }
 
 function scheduleWalk() {
-  const delay = 4000 + Math.random() * 6000; // wait 4-10s before next move
+  const delay = 4000 + Math.random() * 6000;
   walkTimer = setTimeout(() => {
     if (bot && status === 'connected' && !bot.isSleeping && originPos) {
       const directions = ['forward', 'back', 'left', 'right'];
       const dir = directions[Math.floor(Math.random() * directions.length)];
       const back = OPPOSITE_DIR[dir];
-      const targetDistance = 4 + Math.random() * 4; // walk out 4-8 blocks
+      const targetDistance = 4 + Math.random() * 4;
 
-      // Leg 1: walk out to the target distance
       walkUntil(dir, { targetDistance }, (reason) => {
-        if (reason === 'liquid') {
-          log('⚠ Liquid detected, returning to origin', 'warn');
-        }
         if (!bot) { scheduleWalk(); return; }
 
-        // Leg 2: walk back until actually at origin (within threshold)
         walkUntil(back, { returning: true }, (returnReason) => {
           if (returnReason === 'timeout') {
             log('Return walk timed out, may be off course', 'warn');
@@ -201,9 +184,8 @@ function scheduleWalk() {
   }, delay);
 }
 
-// Occasionally jump in place, on a random timer.
 function scheduleJump() {
-  const delay = 8000 + Math.random() * 12000; // jump every 8-20s
+  const delay = 8000 + Math.random() * 12000;
   jumpTimer = setTimeout(() => {
     if (bot && status === 'connected' && !bot.isSleeping) {
       bot.setControlState('jump', true);
@@ -215,7 +197,6 @@ function scheduleJump() {
   }, delay);
 }
 
-// Find a bed block within reach of the bot.
 function findBed() {
   if (!bot || !bot.registry) return null;
   const bedIds = bot.registry.blocksArray
@@ -228,13 +209,11 @@ function findBed() {
   });
 }
 
-// Every ~15s, check whether it's night and the bot should hop into bed,
-// or whether it's day and the bot should get back up.
 function scheduleSleep() {
   sleepTimer = setTimeout(() => {
     if (bot && status === 'connected' && bot.time) {
-      const t = bot.time.timeOfDay; // 0-24000
-      const canSleep = t >= 12541 && t <= 23458; // Minecraft's "sleepable" window
+      const t = bot.time.timeOfDay;
+      const canSleep = t >= 12541 && t <= 23458;
 
       if (bot.isSleeping) {
         if (!canSleep) {
@@ -252,23 +231,10 @@ function scheduleSleep() {
 }
 
 function stopAFK() {
-  if (afkTimer) {
-    clearInterval(afkTimer);
-    afkTimer = null;
-  }
-  if (walkTimer) {
-    clearTimeout(walkTimer);
-    walkTimer = null;
-  }
-  if (jumpTimer) {
-    clearTimeout(jumpTimer);
-    jumpTimer = null;
-  }
-  if (sleepTimer) {
-    clearTimeout(sleepTimer);
-    sleepTimer = null;
-  }
-  // Release any held movement keys so the bot doesn't get stuck mid-step
+  if (afkTimer) { clearInterval(afkTimer); afkTimer = null; }
+  if (walkTimer) { clearTimeout(walkTimer); walkTimer = null; }
+  if (jumpTimer) { clearTimeout(jumpTimer); jumpTimer = null; }
+  if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
   if (bot) {
     ['forward', 'back', 'left', 'right', 'jump', 'sneak'].forEach((c) => {
       try { bot.setControlState(c, false); } catch (_) {}
@@ -319,7 +285,6 @@ function createBot() {
     log(`Spawned in ${bot.game?.dimension ?? 'unknown'}`, 'info');
     io.emit('status', { status, botInfo });
 
-    // Lock in the origin point the bot should always return to
     if (bot.entity) {
       originPos = bot.entity.position.clone();
       log(`Origin set at (${originPos.x.toFixed(1)}, ${originPos.y.toFixed(1)}, ${originPos.z.toFixed(1)})`, 'system');
@@ -367,7 +332,7 @@ function createBot() {
     if (status === 'connected') {
       setStatus('reconnecting');
     }
-    originPos = null; // fresh origin will be set on next spawn
+    originPos = null;
     stopAFK();
     scheduleReconnect();
   });
@@ -392,7 +357,6 @@ app.get('/api/state', (req, res) => {
 
 // ── Socket.io ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-  // Send current state to new connection
   socket.emit('init', {
     status,
     botInfo,
@@ -400,7 +364,6 @@ io.on('connection', (socket) => {
     log: consoleLog.slice(-100),
   });
 
-  // Run a raw command via bot._client or bot.chat
   socket.on('cmd', (data) => {
     const { type, value } = data;
     if (!bot || status !== 'connected') {
